@@ -1,12 +1,13 @@
 package ceui.pixiv.network
 
-import ceui.pixiv.api.ClientManager
-import ceui.pixiv.session.SessionManager
+import ceui.pixiv.network.contract.TokenProvider
 import okhttp3.Interceptor
 import okhttp3.Response
 import timber.log.Timber
 
-class TokenFetcherInterceptor : Interceptor {
+class TokenFetcherInterceptor(
+    private val tokenProvider: TokenProvider? = null,
+) : Interceptor {
 
     private companion object {
         const val TOKEN_ERROR_PEEK_BYTES = 4096L
@@ -25,30 +26,31 @@ class TokenFetcherInterceptor : Interceptor {
         val response = chain.proceed(request)
 
         return if (!explicitAuthorization && response.code == 400) {
-            // 只为下面两个 marker 做 contains，pixiv 的 token 错误响应不到 200 字节；
-            // 有上限地 peek，别把任意大小的 400 响应体整个读进内存。
             val gson = response.peekBody(TOKEN_ERROR_PEEK_BYTES).string()
-            // 未登录 / 已登出时不尝试刷新 token,直接返回 400,避免 refreshAccessToken→getAccessToken 抛 "account not found" 炸 OkHttp 线程
-            if (SessionManager.isLoggedIn &&
-                (gson.contains(ClientManager.TOKEN_ERROR_1) || gson.contains(ClientManager.TOKEN_ERROR_2))) {
-                val tokenForThisRequest = request.header(ClientManager.HEADER_AUTH)
-                    ?.substring(ClientManager.TOKEN_HEAD.length) ?: ""
+            val currentToken = tokenProvider?.getBearerToken()
+            if (!currentToken.isNullOrEmpty() &&
+                (gson.contains(NetworkConstants.TOKEN_ERROR_1) || gson.contains(NetworkConstants.TOKEN_ERROR_2))) {
+                val tokenForThisRequest = request.header(NetworkConstants.HEADER_AUTH)
+                    ?.removePrefix(NetworkConstants.TOKEN_HEAD) ?: ""
                 Timber.tag("TokenRefresh").d(
                     "[%s] 400 token error on %s %s → asking for refresh",
                     Thread.currentThread().name, request.method, request.url.encodedPath,
                 )
-                val refreshedAccessToken = SessionManager.refreshAccessToken(tokenForThisRequest)
+                val refreshedAccessToken = tokenProvider.refreshTokenBlocking(tokenForThisRequest)
                 if (refreshedAccessToken != null) {
                     Timber.tag("TokenRefresh").d(
                         "[%s] replaying %s %s with refreshed token",
                         Thread.currentThread().name, request.method, request.url.encodedPath,
                     )
-                    // 只有确定要重放时才关旧响应；拿不到新 token 时旧响应要原样交回
-                    // Retrofit 读 errorBody，提前 close 会让它抛 "closed"。
                     response.close()
+                    val authHeaderVal = if (refreshedAccessToken.startsWith(NetworkConstants.TOKEN_HEAD)) {
+                        refreshedAccessToken
+                    } else {
+                        NetworkConstants.TOKEN_HEAD + refreshedAccessToken
+                    }
                     val newRequest = request
                         .newBuilder()
-                        .header(ClientManager.HEADER_AUTH, ClientManager.TOKEN_HEAD + refreshedAccessToken)
+                        .header(NetworkConstants.HEADER_AUTH, authHeaderVal)
                         .build()
                     chain.proceed(newRequest)
                 } else {

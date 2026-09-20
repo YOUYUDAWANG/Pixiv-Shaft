@@ -7,3 +7,6 @@ plugins {
 
 include ':app', ':models', ':progressmanager', ':flowlayout-lib', ':actionqueue', ':feeds', ':witstudio', ':websocket', ':banner', ':panel', ':safe'
 include ':communication'
+include ':core-network'
+
+include ':app-gallery'

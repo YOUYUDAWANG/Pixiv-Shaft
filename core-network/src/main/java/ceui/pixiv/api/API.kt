@@ -19,7 +19,6 @@ import ceui.lisa.models.Preset
 import ceui.lisa.models.UserDetailResponse
 import ceui.lisa.models.UserFollowDetail
 import ceui.lisa.models.UserState
-import ceui.lisa.utils.Params
 import ceui.pixiv.api.model.ArticlesResponse
 import ceui.pixiv.api.model.CommentResponse
 import ceui.pixiv.api.model.HomeIllustResponse
@@ -89,7 +88,7 @@ interface API {
     @POST("/v2/illust/bookmark/add")
     suspend fun postBookmark(
         @Field("illust_id") illust_id: Long,
-        @Field("restrict") restrict: String = Params.TYPE_PUBLIC
+        @Field("restrict") restrict: String = "public"
     )
 
     /**

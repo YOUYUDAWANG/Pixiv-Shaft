@@ -1,0 +1,129 @@
+import java.security.SecureRandom
+
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+apply plugin: 'kotlin-parcelize'
+
+def shaftEventsHmacProvider = providers.gradleProperty('SHAFT_EVENTS_HMAC')
+        .orElse(providers.environmentVariable('SHAFT_EVENTS_HMAC'))
+        .orElse('')
+def generatedShaftSecretsDir = layout.buildDirectory.dir('generated/shaft-secrets')
+def generatedShaftSecretsHeader = generatedShaftSecretsDir.map {
+    it.file('shaft_secrets.generated.h')
+}
+
+def generateShaftSecretsHeader = tasks.register('generateShaftSecretsHeader') {
+    outputs.file(generatedShaftSecretsHeader)
+    outputs.upToDateWhen { false }
+
+    doLast {
+        byte[] secret = shaftEventsHmacProvider.get().getBytes('UTF-8')
+        int storageSize = secret.length > 0 ? secret.length : 1
+        byte[] maskA = new byte[storageSize]
+        byte[] maskB = new byte[storageSize]
+        byte[] encoded = new byte[storageSize]
+        def random = new SecureRandom()
+        random.nextBytes(maskA)
+        random.nextBytes(maskB)
+        for (int i = 0; i < storageSize; i++) {
+            int value = i < secret.length ? secret[i] & 0xff : random.nextInt(256)
+            encoded[i] = (byte) (value ^ (maskA[i] & 0xff) ^ (maskB[i] & 0xff))
+        }
+
+        def values = { byte[] bytes ->
+            bytes.collect { String.format('0x%02x', it & 0xff) }.join(', ')
+        }
+        def output = generatedShaftSecretsHeader.get().asFile
+        output.parentFile.mkdirs()
+        output.setText("""#pragma once
+#include <array>
+#include <cstddef>
+#include <cstdint>
+
+// Generated file. Contains only masked bytes; do not commit it.
+namespace shaft::generated {
+inline constexpr std::size_t kSecretSize = ${secret.length};
+inline constexpr std::size_t kStorageSize = ${storageSize};
+inline const volatile std::uint8_t kEncoded[kStorageSize] = {${values(encoded)}};
+inline const volatile std::uint8_t kMaskA[kStorageSize] = {${values(maskA)}};
+inline const volatile std::uint8_t kMaskB[kStorageSize] = {${values(maskB)}};
+}
+""")
+        output.setReadable(false, false)
+        output.setReadable(true, true)
+        output.setWritable(false, false)
+        output.setWritable(true, true)
+        java.util.Arrays.fill(secret, (byte) 0)
+        java.util.Arrays.fill(maskA, (byte) 0)
+        java.util.Arrays.fill(maskB, (byte) 0)
+        java.util.Arrays.fill(encoded, (byte) 0)
+    }
+}
+
+android {
+    compileSdk 36
+
+    defaultConfig {
+        minSdkVersion 24
+        targetSdkVersion 36
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles 'consumer-rules.pro'
+
+        externalNativeBuild {
+            cmake {
+                arguments "-DSHAFT_GENERATED_SECRET_DIR=${generatedShaftSecretsDir.get().asFile.absolutePath}"
+                cppFlags '-std=c++20', '-fvisibility=hidden', '-fvisibility-inlines-hidden',
+                        '-fstack-protector-strong', '-D_FORTIFY_SOURCE=2'
+            }
+        }
+        ndk {
+            abiFilters providers.gradleProperty('SHAFT_TEST_ABI').getOrElse('arm64-v8a')
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file('src/main/cpp/CMakeLists.txt')
+            version = '3.22.1'
+        }
+    }
+
+    compileOptions {
+        coreLibraryDesugaringEnabled = true
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_17
+    }
+    buildFeatures {
+        buildConfig = true
+    }
+    namespace = 'ceui.pixiv.network'
+}
+
+tasks.configureEach { task ->
+    def nativeBuildTask = task.name.contains('CMake') || task.name.startsWith('externalNativeBuild')
+    if (nativeBuildTask && !task.name.toLowerCase(Locale.ROOT).contains('clean')) {
+        task.dependsOn(generateShaftSecretsHeader)
+    }
+}
+
+dependencies {
+    api project(':models')
+    api libs.retrofit
+    api libs.retrofitGson
+    api libs.okhttp
+    implementation libs.gson
+    implementation libs.coroutinesCore
+    implementation libs.coroutinesAndroid
+    implementation libs.androidxAnnotation
+    implementation libs.timber
+    implementation libs.cronet
+    coreLibraryDesugaring libs.desugarJdkLibs
+
+    testImplementation libs.junit4
+    testImplementation libs.mockWebServer
+    testImplementation libs.coroutinesTest
+}

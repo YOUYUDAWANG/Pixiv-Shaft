@@ -11,7 +11,7 @@ import javax.net.ssl.SSLException
 import kotlinx.coroutines.CancellationException
 
 /** Stable, unobfuscated transport buckets shared by retry policy and telemetry. */
-internal enum class TransportFailureKind(
+enum class TransportFailureKind(
     val wire: String,
     val retryable: Boolean,
 ) {
@@ -30,7 +30,7 @@ internal enum class TransportFailureKind(
  * The order is intentional: SocketTimeoutException is also an InterruptedIOException, and specific
  * socket/DNS/TLS failures are also IOExceptions.
  */
-internal fun classifyTransportFailure(error: Throwable): TransportFailureKind? {
+fun classifyTransportFailure(error: Throwable): TransportFailureKind? {
     val causes = generateSequence(error) { current ->
         current.cause?.takeUnless { it === current }
     }.toList()

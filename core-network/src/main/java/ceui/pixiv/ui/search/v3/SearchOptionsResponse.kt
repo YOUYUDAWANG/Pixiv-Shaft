@@ -1,6 +1,21 @@
 package ceui.pixiv.ui.search.v3
 
 import com.google.gson.annotations.SerializedName
+import java.io.Serializable
+
+data class BookmarkRangeSpec(val min: Int?, val max: Int?) : Serializable {
+    companion object {
+        val DEFAULT_PRESETS = listOf(
+            BookmarkRangeSpec(1000, null),
+            BookmarkRangeSpec(500, 999),
+            BookmarkRangeSpec(300, 499),
+            BookmarkRangeSpec(100, 299),
+            BookmarkRangeSpec(50, 99),
+            BookmarkRangeSpec(30, 49),
+            BookmarkRangeSpec(10, 29),
+        )
+    }
+}
 
 /**
  * Maps `/v1/search/options` — pixiv 官方在新版 iOS app 用来动态拉「当前账号可选的筛选选项」

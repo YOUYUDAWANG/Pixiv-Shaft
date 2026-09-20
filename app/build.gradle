@@ -9,72 +9,6 @@ apply plugin: 'com.google.gms.google-services'
 apply plugin: 'com.google.firebase.crashlytics'
 // apply plugin: 'org.jmailen.kotlinter'  // 临时停用，见根 build.gradle
 
-// 官方包的 HMAC 密钥只在构建进程里读取，绝不生成进 BuildConfig/String 常量。
-// 任务输出三份随机掩码字节表；C++ 在签名调用期间恢复原始字节、完成 HMAC 后立即清零。
-// 这能阻止 strings/jadx 直接拿到明文，但客户端仍是不可信环境，不能替代服务端短期凭证。
-def shaftEventsHmacProvider = providers.gradleProperty('SHAFT_EVENTS_HMAC')
-        .orElse(providers.environmentVariable('SHAFT_EVENTS_HMAC'))
-        .orElse('')
-def generatedShaftSecretsDir = layout.buildDirectory.dir('generated/shaft-secrets')
-def generatedShaftSecretsHeader = generatedShaftSecretsDir.map {
-    it.file('shaft_secrets.generated.h')
-}
-
-def generateShaftSecretsHeader = tasks.register('generateShaftSecretsHeader') {
-    outputs.file(generatedShaftSecretsHeader)
-    // Never persist the secret (or a guessable derivative) in Gradle's task history. Regenerating
-    // also gives every build fresh masks, even when the injected key itself did not rotate.
-    outputs.upToDateWhen { false }
-
-    doLast {
-        byte[] secret = shaftEventsHmacProvider.get().getBytes('UTF-8')
-        int storageSize = secret.length > 0 ? secret.length : 1
-        byte[] maskA = new byte[storageSize]
-        byte[] maskB = new byte[storageSize]
-        byte[] encoded = new byte[storageSize]
-        def random = new SecureRandom()
-        random.nextBytes(maskA)
-        random.nextBytes(maskB)
-        for (int i = 0; i < storageSize; i++) {
-            int value = i < secret.length ? secret[i] & 0xff : random.nextInt(256)
-            encoded[i] = (byte) (value ^ (maskA[i] & 0xff) ^ (maskB[i] & 0xff))
-        }
-
-        // Integer.toString(int) is STATIC in Java, so Groovy's `(it & 0xff).toString(16)` resolves to
-        // Integer.toString(16) == "16" for every byte: all three tables came out as 0x16 and the
-        // signer keyed on 64 bytes of 0x16 — every X-Shaft-Sign since the native move was wrong.
-        def values = { byte[] bytes ->
-            bytes.collect { String.format('0x%02x', it & 0xff) }.join(', ')
-        }
-        def output = generatedShaftSecretsHeader.get().asFile
-        output.parentFile.mkdirs()
-        output.setText("""#pragma once
-#include <array>
-#include <cstddef>
-#include <cstdint>
-
-// Generated file. Contains only masked bytes; do not commit it.
-namespace shaft::generated {
-inline constexpr std::size_t kSecretSize = ${secret.length};
-inline constexpr std::size_t kStorageSize = ${storageSize};
-// Volatile reads prevent LTO/the optimizer from folding the three tables back into a contiguous
-// plaintext constant. The tables remain read-only and independently randomized per build.
-inline const volatile std::uint8_t kEncoded[kStorageSize] = { ${values(encoded)} };
-inline const volatile std::uint8_t kMaskA[kStorageSize] = { ${values(maskA)} };
-inline const volatile std::uint8_t kMaskB[kStorageSize] = { ${values(maskB)} };
-}  // namespace shaft::generated
-""", 'UTF-8')
-        output.setReadable(false, false)
-        output.setReadable(true, true)
-        output.setWritable(false, false)
-        output.setWritable(true, true)
-
-        [secret, maskA, maskB, encoded].each { bytes ->
-            for (int i = 0; i < bytes.length; i++) bytes[i] = 0
-        }
-    }
-}
-
 android {
     compileSdk 36
 
@@ -100,13 +34,6 @@ android {
         // forks build with an empty native key and keep the historical disabled behavior.
         buildConfigField "String", "SHAFT_EVENTS_BASE_URL",
             '"' + (project.findProperty('SHAFT_EVENTS_BASE_URL') ?: 'http://36.138.103.18:30009') + '"'
-        externalNativeBuild {
-            cmake {
-                arguments "-DSHAFT_GENERATED_SECRET_DIR=${generatedShaftSecretsDir.get().asFile.absolutePath}"
-                cppFlags '-std=c++20', '-fvisibility=hidden', '-fvisibility-inlines-hidden',
-                        '-fstack-protector-strong', '-D_FORTIFY_SOURCE=2'
-            }
-        }
     }
 
     lint {
@@ -206,13 +133,6 @@ android {
         androidTest.assets.srcDirs += files("$projectDir/schemas")
     }
 
-    externalNativeBuild {
-        cmake {
-            path file('src/main/cpp/CMakeLists.txt')
-            version = '3.22.1'
-        }
-    }
-
     buildFeatures {
         dataBinding = true
         viewBinding = true
@@ -241,15 +161,6 @@ room {
     schemaDirectory "$projectDir/schemas"
 }
 
-// CMake compilation must never race the generated secret header, especially when Gradle
-// builds google/github variants in parallel.
-tasks.configureEach { task ->
-    def nativeBuildTask = task.name.contains('CMake') || task.name.startsWith('externalNativeBuild')
-    if (nativeBuildTask && !task.name.toLowerCase(Locale.ROOT).contains('clean')) {
-        task.dependsOn(generateShaftSecretsHeader)
-    }
-}
-
 // DateFormatPatternStringsTest 在运行时直接读 src/main/res 校验各 locale 的日期 pattern 字符串,
 // 但 res 不在单测任务的默认输入里——不声明的话,纯翻译改动会被 up-to-date 跳过,守门形同虚设。
 tasks.withType(Test).configureEach {
@@ -257,6 +168,7 @@ tasks.withType(Test).configureEach {
 }
 
 dependencies {
+    implementation project(':core-network')
     testImplementation libs.junit4
     // websocket 测试(来自上游 Peanut)需要的 mock server 与协程测试调度器;
     // 版本分别对齐主依赖的 okhttp 4.12.0 / 传递解析出的 coroutines 1.10.2

@@ -1,6 +1,6 @@
 package ceui.pixiv.network
 
-import ceui.lisa.BuildConfig
+import ceui.pixiv.network.BuildConfig
 import okhttp3.Interceptor
 import okhttp3.Response
 import timber.log.Timber

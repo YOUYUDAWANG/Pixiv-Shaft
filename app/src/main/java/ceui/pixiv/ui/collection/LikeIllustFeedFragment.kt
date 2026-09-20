@@ -206,7 +206,8 @@ class LikeIllustFeedFragment : IllustFeedFragment() {
             // 关闭时不过滤 visible，让已删除/不可见的插画收藏也能显示（与小说侧一致）。
             val filterInvalid = Shaft.sSettings.isFilterInvalidBookmarks
             return illusts.mapNotNull { illust ->
-                if (filterInvalid && (illust.user == null || illust.user.id == 0L)) {
+                val user = illust.user
+                if (filterInvalid && (user == null || user.id == 0L)) {
                     return@mapNotNull null
                 }
                 IllustFeedItem.of(illust, skipVisibleFilter = !filterInvalid)

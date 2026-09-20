@@ -59,7 +59,8 @@ class SnapshotArtworkFeedSource(
     ): List<FeedItem> {
         val list = mutableListOf<FeedItem>()
         list.add(ArtworkHeroItem(illust))
-        if (illust.series != null && !illust.series.title.isNullOrEmpty()) {
+        val series = illust.series
+        if (series != null && !series.title.isNullOrEmpty()) {
             list.add(ArtworkSeriesItem(illust))
         }
         list.add(
@@ -70,8 +71,9 @@ class SnapshotArtworkFeedSource(
                 isPrivateFollow = false,
             )
         )
-        if (!illust.caption.isNullOrEmpty()) {
-            list.add(ArtworkDescItem(illust.caption, illust.title.orEmpty()))
+        val caption = illust.caption
+        if (!caption.isNullOrEmpty()) {
+            list.add(ArtworkDescItem(caption, illust.title.orEmpty()))
         }
         list.add(ArtworkTagsItem(illust))
         list.add(ArtworkStatsItem(illust))

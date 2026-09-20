@@ -6,13 +6,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 
-import ceui.lisa.activities.Shaft;
-import ceui.lisa.utils.Common;
 import okhttp3.Dns;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
+import timber.log.Timber;
 
 public class HttpDns implements Dns {
 
@@ -92,13 +92,15 @@ public class HttpDns implements Dns {
         }
     }
 
+    public static volatile BooleanSupplier secureDnsSupplier = () -> false;
+
     private static boolean isSecureDnsEnabled() {
-        return Shaft.sSettings != null && Shaft.sSettings.isUseSecureDns();
+        return secureDnsSupplier != null && secureDnsSupplier.getAsBoolean();
     }
 
     private void resolveViaDoH(String hostname, int endpointIndex) {
         if (endpointIndex >= DOH_ENDPOINTS.length) {
-            Common.showLog("HttpDns all DoH failed for " + hostname + ", will use fallback IPs");
+            Timber.d("HttpDns all DoH failed for %s, will use fallback IPs", hostname);
             return;
         }
         try {
@@ -107,7 +109,7 @@ public class HttpDns implements Dns {
                 @Override
                 public void onResponse(Call<CloudFlareDNSResponse> call, Response<CloudFlareDNSResponse> response) {
                     CloudFlareDNSResponse body = response.body();
-                    if (body != null && !Common.isEmpty(body.getAnswer())) {
+                    if (body != null && body.getAnswer() != null && !body.getAnswer().isEmpty()) {
                         List<InetAddress> addresses = new ArrayList<>();
                         for (CloudFlareDNSResponse.DNSAnswer answer : body.getAnswer()) {
                             try {
@@ -119,7 +121,7 @@ public class HttpDns implements Dns {
                         }
                         if (!addresses.isEmpty()) {
                             resolvedHosts.put(hostname, addresses);
-                            Common.showLog("HttpDns resolved " + hostname + " -> " + addresses);
+                            Timber.d("HttpDns resolved %s -> %s", hostname, addresses);
                         } else {
                             resolveViaDoH(hostname, endpointIndex + 1);
                         }
@@ -130,7 +132,7 @@ public class HttpDns implements Dns {
 
                 @Override
                 public void onFailure(Call<CloudFlareDNSResponse> call, Throwable t) {
-                    Common.showLog("HttpDns DoH failed for " + hostname + ": " + t.getMessage());
+                    Timber.d("HttpDns DoH failed for %s: %s", hostname, t.getMessage());
                     resolveViaDoH(hostname, endpointIndex + 1);
                 }
             });
@@ -147,7 +149,7 @@ public class HttpDns implements Dns {
             List<InetAddress> cached = resolvedHosts.get(hostname);
             if (cached != null && !cached.isEmpty()) {
                 long elapsed = (System.nanoTime() - start) / 1_000_000;
-                Common.showLog("HttpDns lookup " + hostname + " → DoH cached " + cached + " [" + elapsed + "ms]");
+                Timber.d("HttpDns lookup %s → DoH cached %s [%dms]", hostname, cached, elapsed);
                 return cached;
             }
         } else {
@@ -156,7 +158,7 @@ public class HttpDns implements Dns {
                 List<InetAddress> systemResult = Dns.SYSTEM.lookup(hostname);
                 if (!systemResult.isEmpty()) {
                     long elapsed = (System.nanoTime() - start) / 1_000_000;
-                    Common.showLog("HttpDns lookup " + hostname + " → system " + systemResult + " [" + elapsed + "ms]");
+                    Timber.d("HttpDns lookup %s → system %s [%dms]", hostname, systemResult, elapsed);
                     return systemResult;
                 }
             } catch (UnknownHostException ignored) {
@@ -174,7 +176,7 @@ public class HttpDns implements Dns {
             source = "fallback-api";
         }
         long elapsed = (System.nanoTime() - start) / 1_000_000;
-        Common.showLog("HttpDns lookup " + hostname + " → " + source + " " + result + " [" + elapsed + "ms]");
+        Timber.d("HttpDns lookup %s → %s %s [%dms]", hostname, source, result, elapsed);
         return result;
     }
 }

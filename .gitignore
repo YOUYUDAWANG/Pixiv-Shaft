@@ -7,7 +7,7 @@
 **/build/
 /captures
 .externalNativeBuild
-/app/.cxx/
+**/.cxx/
 /app/release/
 /app/github/
 /app/google/

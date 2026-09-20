@@ -429,12 +429,13 @@ class FragmentIllust : BaseLazyFragment<FragmentIllustBinding>() {
     }
 
     private fun setupTitle(illust: Illust) {
-        if (!isSnapshotMode && illust.series != null && !TextUtils.isEmpty(illust.series.title)) {
+        val series = illust.series
+        if (!isSnapshotMode && series != null && !TextUtils.isEmpty(series.title)) {
             val clickableSpan: ClickableSpan = object : ClickableSpan() {
                 override fun onClick(widget: View) {
                     val intent = Intent(mContext, TemplateActivity::class.java)
                     intent.putExtra(TemplateActivity.EXTRA_FRAGMENT, TemplateRoute.MANGA_SERIES_DETAIL.key)
-                    intent.putExtra(Params.MANGA_SERIES_ID, illust.series.id.toInt())
+                    intent.putExtra(Params.MANGA_SERIES_ID, series.id.toInt())
                     startActivity(intent)
                 }
 

@@ -183,10 +183,11 @@ class UserV3InfoFragment : Fragment() {
 
     private fun bindWebUserDetail(detail: WebUserDetail) {
         // Web 端的 commentHtml 比 app 端的 user.comment 排版更全（有 <a> 等标签）,有就覆盖。
-        if (!detail.commentHtml.isNullOrEmpty()) {
+        val commentHtml = detail.commentHtml
+        if (!commentHtml.isNullOrEmpty()) {
             bindBio(
                 androidx.core.text.HtmlCompat.fromHtml(
-                    detail.commentHtml, androidx.core.text.HtmlCompat.FROM_HTML_MODE_COMPACT
+                    commentHtml, androidx.core.text.HtmlCompat.FROM_HTML_MODE_COMPACT
                 )
             )
         }

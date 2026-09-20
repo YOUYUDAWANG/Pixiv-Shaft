@@ -128,7 +128,8 @@ class ArtworkV3FeedSource(
         fun buildArtworkHeaderItems(illust: Illust): List<FeedItem> {
             val list = mutableListOf<FeedItem>()
             list.add(ArtworkHeroItem(illust))
-            if (illust.series != null && !TextUtils.isEmpty(illust.series.title)) {
+            val series = illust.series
+            if (series != null && !TextUtils.isEmpty(series.title)) {
                 list.add(ArtworkSeriesItem(illust))
             }
             list.add(ArtworkArtistItem(illust))
