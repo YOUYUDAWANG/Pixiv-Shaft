@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.SystemBarStyle
@@ -78,11 +79,11 @@ private fun GalleryApp(state: GalleryState = viewModel()) {
         surfaceContainer = Color(0xFFEEEBE6), onBackground = Color(0xFF25222B),
         onSurface = Color(0xFF25222B), onSurfaceVariant = Color(0xFF706A77)
     )
-    val activity = LocalContext.current as ComponentActivity
+    val activity = LocalActivity.current as? ComponentActivity
     SideEffect {
         val barStyle = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
             else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
-        activity.enableEdgeToEdge(statusBarStyle = barStyle, navigationBarStyle = barStyle)
+        activity?.enableEdgeToEdge(statusBarStyle = barStyle, navigationBarStyle = barStyle)
     }
     val grid = rememberLazyStaggeredGridState()
     MaterialTheme(colorScheme = colors) {
